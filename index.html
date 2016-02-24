@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<script src="http://d3js.org/d3.v3.js"></script>
+<title>mini-project 1</title>
+<style>
+</style>
+</head>
+<body>
+	<div id="vis"></div>
+	<!-- (3) respond to mouse clicks to cycle through all variables and update chart -->
+	<button type=button
+		onclick="column = (1 + column) % column_size; update_data(data); show_bar()">Change
+		variable</button>
+	<h3 id="varLabel">Current variable:</h3>
+	<!-- (6) on mouse click transform the bar chart into a pie chart (and back) -->
+	<p>
+		<button type=button id="bar" onclick="switch_to_bar()">Bar
+			Chart</button>
+		<button type=button id="pie" onclick="switch_to_pie()">Pie
+			Chart</button>
+		<button type=button id="forced-directed" onclick="switch_to_fd()">Forced-Directed
+			Graph</button>
+	</p>
+	<script>
+		// init
+		var data, column_names, column_size;
+		var colors = [ "red", "orange", "yellow", "green", "cyan", "blue",
+				"purple" ];
+
+		// width ,height ,padding, variable index, number of bin, margin
+		var w = 800, h = 500, barPadding = 3, column = 0, nbin = 10, margin = {
+			top : 20,
+			right : 20,
+			bottom : 30,
+			left : 40
+		};
+		var bw = w - margin.left - margin.right, bh = h - margin.top
+				- margin.bottom;
+		var min, max, bin_size, bins = new Array(nbin);
+
+		// create SVG element
+		var svg = d3.select("body").append("svg").attr("width", w).attr(
+				"height", h);
+		// create pie chart element
+		var pies = svg.append("g").attr("id", "pie_chart").attr("transform",
+				"translate(" + bw / 2 + ", " + bh / 2 + ")")
+				.style("opacity", 0);
+		// create forced-direct graph element
+		var fdg = svg.append("g").style("opacity", 0);
+		// create bar chart element (append lastly to be on top of stack for handling mouseover / out)
+		var bars = svg.append("g").attr("id", "bar_chart").attr("transform",
+				"translate(50, 50)");
+
+		// axis
+		/* 			var xAxis = d3.svg.axis().orient("bottom");
+		 var yAxis = d3.svg.axis().orient("left").ticks(10, "%");
+		 svg.append("g").attr("class", "x axis").call(xAxis);
+
+		 svg.append("g").attr("class", "y axis").call(yAxis).attr("y", 6)
+		 .attr("dy", ".71em").style("text-anchor", "end").text(
+		 "time"); */
+
+		// load data & show graphs
+		d3.csv("http://allv28.all.cs.stonybrook.edu:8080/zhffan/mini-project1/data/OrchardSprays.csv",
+				function(rows) {
+					update_data(rows);
+
+					show_bar();
+					show_pie();
+					show_forced_directed_graph();
+				});
+
+		function update_data(rows) {
+			data = rows;
+			column_names = Object.keys(rows[0]);
+			column_size = column_names.length;
+
+			// (1) pick a variable
+			rows = data.map(function(d) {
+				return d[column_names[column]];
+			});
+			document.getElementById("varLabel").innerHTML = "Current variable: "
+					+ column_names[column];
+
+			// (1) bin it into a fixed range (equi-wdith) of the choice
+			min = d3.min(rows), max = d3.max(rows), bin_size = (max - min)
+					/ nbin;
+			for (var i = 0; i < nbin; i++) {
+				bins[i] = 0;
+			}
+			for (i in rows) {
+				var index = Math.min(9, Math.floor((rows[i] - min) / bin_size));
+				bins[index]++;
+			}
+		}
+
+		function show_bar() {
+			// adjust height to fit in bar chart: max -> h
+			max = d3.max(bins);
+
+			// (2) create a bar chart of the variable picked in (1)
+			i = 0;
+			var vis = d3.select("#bar_chart");
+			var bars = vis.selectAll("rect.bar").data(bins);
+			var labels = vis.selectAll("text.value").data(bins);
+
+			// update: existed bars update
+			bars.attr("fill", "steelblue").attr("stroke", "white").attr(
+					"stroke-width", 1);
+
+			// enter: new bars appear
+			bars.enter().append("svg:rect").attr("class", "bar").attr("fill",
+					"steelblue").attr("stroke", "white")
+					.attr("stroke-width", 1).on(
+							"mouseover",
+							function(d, i) {
+								// (5) on mouse over make the bar wider and higher to focus on it
+								max = d3.max(vis.selectAll("rect.bar").data());
+								var change = 20;
+								var bar = d3.select(this);
+								bar.transition().duration(500).ease("quad")
+										.attr("x", function(dd) {
+											return i * bw / nbin - change;
+										}).attr(
+												"y",
+												function(dd) {
+													return bh - (dd * bh / max)
+															- change;
+												}).attr(
+												"width",
+												bw / nbin - barPadding + 2
+														* change).attr(
+												"height",
+												function(dd) {
+													return (dd * bh / max)
+															+ change;
+												});
+								//bar.moveToFront(); // TODO: fix index issue
+
+								// (4) only on mouse over display the value of the bar on top of the bar
+								var label = labels.filter(function(dd, ii) {
+									return i === ii;
+								});
+								label.transition().duration(500).style(
+										"opacity", 1);
+								//label.moveToFront();  // TODO: fix index issue
+							}).on(
+							"mouseout",
+							function(d, i) {
+								// restore (hide) label
+								max = d3.max(vis.selectAll("rect.bar").data());
+								labels.transition().duration(500).style(
+										"opacity", 0);
+
+								// restore (resize) bar
+								bars.transition().duration(500).ease("quad")
+										.attr("x", function(dd, ii) {
+											return ii * bw / nbin;
+										}).attr("y", function(dd) {
+											return bh - (dd * bh / max);
+										})
+										.attr("width", bw / nbin - barPadding)
+										.attr("height", function(dd) {
+											return (dd * bh / max);
+										});
+							});
+
+			// exit: redundant bars disapper
+			bars.exit().transition().duration(500).ease("exp").attr("width", 0)
+					.remove();
+
+			bars.transition().duration(500).ease("quad").attr("x",
+					function(d, i) {
+						return i * bw / nbin;
+					}).attr("y", function(d) {
+				return bh - (d * bh / max);
+			}).attr("width", bw / nbin - barPadding).attr("height",
+					function(d) {
+						return (d * bh / max);
+					});
+
+			// update: existed text update (text, height)
+			labels.attr("fill", "white").transition().duration(500).ease("exp")
+					.text(function(d) {
+						return d;
+					}).attr("x", function(d, i) {
+						return i * (bw / nbin) + (bw / nbin - barPadding) / 2;
+					}).attr("y", function(d) {
+						max = d3.max(vis.selectAll("rect.bar").data());
+						return bh - (d * bh / max) + 14;
+					}).attr("font-family", "sans-serif").attr("font-size",
+							"11px").attr("fill", "white").attr("text-anchor",
+							"middle").attr("class", "value").attr("opacity", 0);
+
+			// enter: new text appear
+			labels.enter().append("text").text(function(d) {
+				return d;
+			}).attr("x", function(d, i) {
+				return i * (bw / nbin) + (bw / nbin - barPadding) / 2;
+			}).attr("y", function(d) {
+				max = d3.max(vis.selectAll("rect.bar").data());
+				return bh - (d * bh / max) + 14;
+			}).attr("font-family", "sans-serif").attr("font-size", "11px")
+					.attr("fill", "white").attr("text-anchor", "middle").attr(
+							"class", "value").attr("opacity", 0);
+
+			// exit: redundant text disapper
+			labels.exit().transition().duration(500).ease("exp").attr("width",
+					0).remove();
+		}
+
+		function show_pie() {
+			// (6) on mouse click transform the bar chart into a pie chart (and back)
+			var radius = Math.min(bw, bh) / 2;
+			var arc = d3.svg.arc().outerRadius(radius).innerRadius(0);
+			var labelArc = d3.svg.arc().outerRadius(radius - 40).innerRadius(
+					radius - 40);
+
+			// compute arc angles from data
+			var pie = d3.layout.pie().sort(null).value(function(d) {
+				return d;
+			});
+
+			var g = pies.selectAll(".arc").data(pie(bins)).enter().append("g")
+					.attr("class", "arc");
+
+			g.append("path").attr("d", arc).style("fill", function(d, i) {
+				return colors[i % colors.length];
+			});
+		}
+
+		function show_forced_directed_graph() {
+			d3.json("http://allv28.all.cs.stonybrook.edu:8080/zhffan/mini-project1/data/miserables.json",
+					function(error, graph) {
+						if (error)
+							throw error;
+
+						var force = d3.layout.force().charge(-120)
+								.linkDistance(30).size([ bw, bh ]);
+
+						force.nodes(graph.nodes).links(graph.links).start();
+
+						var link = fdg.selectAll(".link").data(graph.links)
+								.enter().append("line").attr("class", "link")
+								.style("stroke", "grey").style("stroke-width",
+										function(d) {
+											return Math.sqrt(d.value);
+										});
+
+						var node = fdg.selectAll(".node").data(graph.nodes)
+								.enter().append("circle").attr("class", "node")
+								.attr("r", 5).style("fill", function(d, i) {
+									return colors[d.group % colors.length];
+								}).call(force.drag);
+
+						node.append("title").text(function(d) {
+							return d.name;
+						});
+
+						force.on("tick", function() {
+							link.attr("x1", function(d) {
+								return d.source.x;
+							}).attr("y1", function(d) {
+								return d.source.y;
+							}).attr("x2", function(d) {
+								return d.target.x;
+							}).attr("y2", function(d) {
+								return d.target.y;
+							});
+
+							node.attr("cx", function(d) {
+								return d.x;
+							}).attr("cy", function(d) {
+								return d.y;
+							});
+						});
+					});
+
+		}
+
+		function switch_to_bar() {
+			svg.selectAll("*").transition().duration(500).style("opacity", 0);
+			bars.transition().delay(700).duration(500).style("opacity", 1);
+			bars.selectAll("*").transition().delay(700).duration(500).style(
+					"opacity", 1);
+			var labels = svg.selectAll("text.value");
+			labels.transition().delay(700).duration(500).style("opacity", 0);
+		}
+
+		function switch_to_pie() {
+			svg.selectAll("*").transition().duration(500).style("opacity", 0);
+			pies.transition().delay(700).duration(500).style("opacity", 1);
+			pies.selectAll("*").transition().delay(700).duration(500).style(
+					"opacity", 1);
+		}
+
+		function switch_to_fd() {
+			svg.selectAll("*").transition().duration(500).style("opacity", 0);
+			fdg.transition().delay(700).duration(500).style("opacity", 1);
+			fdg.selectAll("*").transition().delay(700).duration(500).style(
+					"opacity", 1);
+		}
+	</script>
+</body>
+</html>
